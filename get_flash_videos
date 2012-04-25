@@ -342,7 +342,9 @@ sub download {
 
   my $suggested_filename = $suggested_fnames[-1];
   if (ref($actual_url) eq 'ARRAY') {
-      $suggested_filename ||= $actual_url->{flv};
+    for my $data(@$actual_url) {
+      $suggested_filename ||= $data->{flv};
+    }
   }
 
   if (!$opt{play}) {
