@@ -62,6 +62,8 @@ sub find_video {
   my $sub = ($browser->content =~ /subtitle=(.*?)&/)[0];
   my $videoid = ($browser->content =~ /videoId:'(.*?)'}/)[0];
   debug "videoid:$videoid";
+  my $swfVfy = ($browser->content =~ /"(\/.*?.swf)"/)[0];
+  debug "swfVfy:$swfVfy";
   $browser->get("http://svtplay.se/popup/lasmer/v/" . "$videoid");
   my $title = ($browser->content =~ /property="og:title" content="(.*?)" \/>/)[0];
   my $flv_filename = title_to_filename($title, "flv");
@@ -81,12 +83,17 @@ sub find_video {
       info "No subtitles found!";
     }
   }
-  return{
-      rtmp => "$url",
-      flv => "$flv_filename",
+  my $args = {
+    rtmp => "$url",
+    flv => "$flv_filename",
   };
-
-
+  if ($swfVfy) {
+    $swfVfy = "http://svtplay.se$swfVfy";
+    info "Verifying against $swfVfy";
+    $args->{swfVfy} = $swfVfy;
+  }
+  push @rtmpdump_commands, $args;
+  return \@rtmpdump_commands;
 }
 
 1;
