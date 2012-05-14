@@ -1,7 +1,11 @@
 # Part of get-flash-videos. See get_flash_videos for copyright.
+# Handles streams from svtplay.se and beta.svtplay.se
 package FlashVideo::Site::Svtplay;
 use strict;
+use warnings;
+use HTML::Entities;
 use FlashVideo::Utils;
+use FlashVideo::JSON;
 
 my $encode_rates = {
      "ultralow" => 320,
@@ -11,6 +15,102 @@ my $encode_rates = {
 
 sub find_video {
   my ($self, $browser, $embed_url, $prefs) = @_;
+  $self->identify_and_fetch($browser, $embed_url, $prefs);
+}
+
+sub identify_and_fetch {
+    my ($self, $browser, $embed_url, $prefs) = @_;
+    my $title = ($browser->content =~ /data-title="([^"]*?)"/)[0];
+    my $info_url = ($browser->content =~ /data-popout-href="([^"]*?)"/)[0];
+
+    if ($info_url) {
+      $self->fetch_new_style($browser, $embed_url, $prefs, $title, $info_url);
+    } else {
+      $self->fetch_old_style($browser, $embed_url, $prefs);
+    }
+}
+
+sub fetch_new_style {
+  my ($self, $browser, $embed_url, $prefs, $title, $info_url) = @_;
+
+  info "Using new-style SVTPlay to download \"$title\"";
+
+  my $description = ($browser->content =~ /<p.*?class.*?playJsFull.*?>(.*?)<\/p>/s)[0];
+  if ($description) {
+    $description = decode_entities($description);
+    $description =~ s/^\s+|\s+$//g;
+    my $txt_filename = title_to_filename($title, "txt"); 
+    info "Saving episode description to \"$txt_filename\"";
+    open(TXT, '>>', $txt_filename)
+      or die "Can't open description file \"$txt_filename\": $!";
+    binmode TXT, ':utf8';
+    print TXT $description;
+    close TXT;
+  }
+
+  debug "Fetching \"$info_url\" for more details..";
+  $browser->get($info_url);
+  if (!$browser->success) {
+    die "Failed to fetch details from \"$info_url\": " . $browser->response->status_line;
+  }
+
+  my $base_url = ($embed_url =~ /(http:\/\/.*?)\//)[0];
+  my $object = ($browser->content =~ /(<object.*?class.*?"svtplayer.*?<\/object>)/s)[0];
+  my $swfVfy = ($object =~ /<param.*?"movie".*?value.*?"(\/.*?.swf)"/s)[0];
+  my $flashvars = ($object =~ /<param.*?"flashvars".*?value="json=({.*?})"/s)[0];
+  my $json = from_json(decode_entities($flashvars));
+
+  my $flv_filename = title_to_filename($title, "flv");
+  my $preferred_bitrate = $encode_rates->{$prefs->{quality}};
+
+  # find the url with the highest bitrate at or below preferences
+  my $best_url = $json->{video}->{videoReferences}[0]->{url};
+  my $best_bitrate = 0;
+  my $videoReference;
+  foreach $videoReference (@{$json->{video}->{videoReferences}}) {
+      # look for proper flash (mp4) videos, skip ios (m3u8) playlists
+      if (($videoReference->{playerType} =~ /flash/)[0]) {
+        my $bitrate = int($videoReference->{bitrate});
+        if ($bitrate <= $preferred_bitrate && $bitrate > $best_bitrate) {
+          $best_url = $videoReference->{url};
+          $best_bitrate = $bitrate;
+        }
+     }
+  }
+
+  my $subtitles = $json->{video}->{subtitleReferences}[0]->{url};
+  if ($subtitles) {
+    info "Fetching subtitles from \"$subtitles\"...";
+    $browser->get("$subtitles");
+    my $srt_filename = title_to_filename($title, "srt"); 
+    my $srt_content = $browser->content;
+    open(SRT, '>>', $srt_filename)
+      or die "Can't open subtitles file \"$srt_filename\": $!";
+    binmode SRT, ':utf8';
+    print SRT $srt_content;
+    close SRT;
+  } else {
+    info "No subtitles found!";
+  }
+
+  my $args = {
+    rtmp => "$best_url",
+    flv => "$flv_filename",
+  };
+  if ($swfVfy) {
+    $swfVfy = "${base_url}${swfVfy}";
+    info "Verifying against $swfVfy";
+    $args->{swfVfy} = $swfVfy;
+  }
+
+  return $args;
+}
+
+sub fetch_old_style {
+  my ($self, $browser, $embed_url, $prefs) = @_;
+
+  info "Using old-style SVTPlay";
+
   my @rtmpdump_commands;
   my $url;
   my $low;
