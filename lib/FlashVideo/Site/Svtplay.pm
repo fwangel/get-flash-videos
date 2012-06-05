@@ -63,13 +63,32 @@ sub fetch_new_style {
     close TXT;
   }
 
+  my $base_url = ($embed_url =~ /(http:\/\/.*?)\//)[0];
+
+  my $image_url = ($browser->content =~ /<div.*?class.*?playBoxSideInfo.*?>.*?<a.*?class.*?svtVideoPlayer.*?<img.*?src.*?(http.*?\.jpg).*?<\/a>.*?<\/div>/s)[0];
+  if ($image_url) {
+    my $img_filename = title_to_filename($title, "jpg");
+    $browser->get($image_url);
+    if (!$browser->success) {
+      info "Failed to fetch episode image from \"$image_url\": " . $browser->response_status_line;
+    } else {
+      my $image_data = $browser->content;
+      info "Saving episode image to \"$img_filename\"";
+      open(IMG, ">", $img_filename)
+        or die "Can't open image file \"$img_filename\": $!";
+      binmode IMG;
+      print IMG $image_data;
+      close IMG;
+    }
+  }
+
+  $info_url = "$base_url$info_url";
   debug "Fetching \"$info_url\" for more details..";
   $browser->get($info_url);
   if (!$browser->success) {
     die "Failed to fetch details from \"$info_url\": " . $browser->response->status_line;
   }
 
-  my $base_url = ($embed_url =~ /(http:\/\/.*?)\//)[0];
   my $object = ($browser->content =~ /(<object.*?class.*?"svtplayer.*?<\/object>)/s)[0];
   my $swfVfy = ($object =~ /<param.*?"movie".*?value.*?"(\/.*?.swf)"/s)[0];
   my $flashvars = ($object =~ /<param.*?"flashvars".*?value="json=({.*?})"/s)[0];
