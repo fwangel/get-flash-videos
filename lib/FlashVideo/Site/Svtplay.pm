@@ -1,5 +1,5 @@
 # Part of get-flash-videos. See get_flash_videos for copyright.
-# Handles streams from svtplay.se and beta.svtplay.se
+# Handles streams from the new svtplay.se (launched June 4, 2012)
 package FlashVideo::Site::Svtplay;
 use strict;
 use warnings;
@@ -33,15 +33,30 @@ sub identify_and_fetch {
 sub fetch_new_style {
   my ($self, $browser, $embed_url, $prefs, $title, $info_url) = @_;
 
-  info "Using new-style SVTPlay to download \"$title\"";
+  debug "Using new-style SVTPlay to download \"$title\"";
 
-  my $description = ($browser->content =~ /<p.*?class.*?playJsFull.*?>(.*?)<\/p>/s)[0];
+  my $program_description = ($browser->content =~ /<div.*?class.*?playVideoInfo.*?>.*?<\/h5>.*?<span>(.*?)<\/span>/s)[0];
+  if ($program_description) {
+    $program_description = decode_entities($program_description);
+    $program_description =~ s/^\s+|\s+$//g;
+    $program_description .= "\n\n";
+  } else {
+    $program_description = "";
+  }
+
+  my $episode_description = ($browser->content =~ /<div.*?class.*?playVideoInfo.*?>.*?<p.*?class.*?svtXMargin-Top-S.*?>(.*?)<\/p>/s)[0];
+  if ($episode_description) {
+    $episode_description = decode_entities($episode_description);
+    $episode_description =~ s/^\s+|\s+$//g;
+  } else {
+    $episode_description = "";
+  }
+
+  my $description = $program_description . $episode_description;
   if ($description) {
-    $description = decode_entities($description);
-    $description =~ s/^\s+|\s+$//g;
     my $txt_filename = title_to_filename($title, "txt"); 
     info "Saving episode description to \"$txt_filename\"";
-    open(TXT, '>>', $txt_filename)
+    open(TXT, '>', $txt_filename)
       or die "Can't open description file \"$txt_filename\": $!";
     binmode TXT, ':utf8';
     print TXT $description;
@@ -109,7 +124,7 @@ sub fetch_new_style {
 sub fetch_old_style {
   my ($self, $browser, $embed_url, $prefs) = @_;
 
-  info "Using old-style SVTPlay";
+  debug "Using old-style SVTPlay";
 
   my @rtmpdump_commands;
   my $url;
