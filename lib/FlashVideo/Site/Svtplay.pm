@@ -65,12 +65,12 @@ sub fetch_new_style {
 
   my $base_url = ($embed_url =~ /(http:\/\/.*?)\//)[0];
 
-  my $image_url = ($browser->content =~ /<div.*?class.*?playBoxSideInfo.*?>.*?<a.*?class.*?svtVideoPlayer.*?<img.*?src.*?(http.*?\.jpg).*?<\/a>.*?<\/div>/s)[0];
+  my $image_url = ($browser->content =~ /<div.*?class.*?playBoxSideInfo.*?>.*?<a.*?class.*?svtVideoPlayer.*?<img.*?src.*?\"(http.*?\").*?<\/a>.*?<\/div>/s)[0];
   if ($image_url) {
     my $img_filename = title_to_filename($title, "jpg");
     $browser->get($image_url);
     if (!$browser->success) {
-      info "Failed to fetch episode image from \"$image_url\": " . $browser->response_status_line;
+      info "Failed to fetch episode image from \"$image_url\": " . $browser->response->status_line;
     } else {
       my $image_data = $browser->content;
       info "Saving episode image to \"$img_filename\"";
@@ -118,7 +118,7 @@ sub fetch_new_style {
     $browser->get("$subtitles");
     my $srt_filename = title_to_filename($title, "srt"); 
     my $srt_content = $browser->content;
-    open(SRT, '>>', $srt_filename)
+    open(SRT, '>', $srt_filename)
       or die "Can't open subtitles file \"$srt_filename\": $!";
     binmode SRT, ':utf8';
     print SRT $srt_content;
@@ -208,7 +208,7 @@ sub fetch_old_style {
       $browser->get("$sub");
       my $srt_filename = title_to_filename($title, "srt"); 
       my $srt_content = $browser->content;
-      open (SRT, '>>',$srt_filename) 
+      open (SRT, '>',$srt_filename) 
         or die "Can't open subtitles file $srt_filename: $!";
       binmode SRT, ':utf8';
       print SRT $srt_content;
